@@ -19,7 +19,7 @@ from torch.distributions.utils import broadcast_all
 from torchquad import MonteCarlo
 
 
-__all__ = ["Stable"]
+__all__ = ["TorchStable"]
 torch.set_default_dtype(torch.double)
 M_PI = torch.tensor(math.pi)
 M_PI_2 = torch.tensor(1.57079632679489661923)
@@ -557,7 +557,7 @@ def _fitstart_mcculloch_S1(data, epsilon):
     
 
 
-class Stable(Distribution):
+class TorchStable(Distribution):
     r"""
     Creates a stable distribution (also called alpha-stable, levy-stable) parametrized by 
     :attr:`alpha`, :attr:`beta`, :attr:`scale`, and :attr:`loc`.
@@ -611,16 +611,19 @@ class Stable(Distribution):
             if torch.all(torch.reshape(self.alpha, (1, -1))[0, :] != 1.):
                 return self._pdf(value, alpha, beta, loc, scale)
             else:
-                value = torch.reshape(value, (1, -1))[0, :]
-                value, alpha, beta = broadcast_all(value, alpha, beta)
+                value_shape = value.shape
+                uniq_param_pairs = torch.cat((alpha.reshape(-1, 1), beta.reshape(-1, 1)), dim=-1)
 
+                value, alpha, beta = broadcast_all(value, alpha, beta)
+                value = torch.reshape(value, (1, -1))[0, :]
+                alpha = torch.reshape(alpha, (1, -1))[0, :]
+                beta = torch.reshape(beta, (1, -1))[0, :]
                 data_in = torch.dstack((value, alpha, beta))[0]
                 data_out = torch.empty(size=(len(data_in), 1))
 
-                uniq_param_pairs = torch.unique(data_in[:, 1:], dim = 0)
                 for pair in uniq_param_pairs:
                     _alpha, _beta = pair
-                    if _alpha == torch.tensor(1.):
+                    if _alpha == 1.:
                         _delta = loc + 2*_beta*scale * torch.log(scale) / M_PI
                     else:
                         _delta = loc
@@ -629,10 +632,11 @@ class Stable(Distribution):
                     _x = data_in[data_mask, 0]
                     data_out[data_mask] = self._pdf(_x, _alpha, _beta, loc=_delta, scale=scale).reshape(len(_x), 1)
 
-                output = data_out.T[0]
-                if output.shape == (1,):
-                    return output[0]
-                return output
+                data_out = torch.reshape(data_out, value_shape) 
+
+                return data_out       
+
+
     
 
     def _pdf(self, value, alpha, beta, loc, scale) -> torch.Tensor:
@@ -644,15 +648,6 @@ class Stable(Distribution):
             _pdf_single_value_piecewise = _pdf_single_value_piecewise_Z1
             _pdf_single_value_cf_integrate = _pdf_single_value_cf_integrate_Z1
             _cf = _cf_Z1
-        
-        value = torch.reshape(value, (1, -1))[0, :]
-        # standardize
-        value = (value - loc) / scale
-
-        value, alpha, beta = broadcast_all(value, alpha, beta)
-
-        data_in = torch.dstack((value, alpha, beta))[0]
-        data_out = torch.empty(size=(len(data_in), 1))
 
         pdf_default_method_name = self.pdf_default_method
         if pdf_default_method_name in ("piecewise", "best", "zolotarev"):
@@ -667,9 +662,31 @@ class Stable(Distribution):
             "piecewise_alpha_tol_near_one": self.piecewise_alpha_tol_near_one,
         }
 
-        # no fft support (by now)
+        # retrieve original shape for reshaping lateron
+        loc, scale, value = broadcast_all(loc, scale, value)
+        value_shape = value.shape
+        # standardize
+        value = (value - loc) / scale
+         
+        uniq_param_pairs = torch.cat((alpha.reshape(-1, 1), beta.reshape(-1, 1)), dim=-1)
+        # print("uniq_param_pairs", uniq_param_pairs.shape)
 
-        uniq_param_pairs = torch.unique(data_in[:, 1:], dim=0)
+        value, alpha, beta = broadcast_all(value, alpha, beta)
+        # print("value", value.shape)
+        # print("alpha", alpha.shape)
+        # print("beta", beta.shape)
+        value = torch.reshape(value, (1, -1))[0, :]
+        alpha = torch.reshape(alpha, (1, -1))[0, :]
+        beta = torch.reshape(beta, (1, -1))[0, :]
+        # print("value", value.shape)
+        # print("alpha", alpha.shape)
+        # print("beta", beta.shape)
+        data_in = torch.dstack((value, alpha, beta))[0]
+        # print("data_in", data_in.shape)
+        # print(data_in)
+        data_out = torch.empty(size=(len(data_in), 1))
+
+        # uniq_param_pairs = torch.unique(data_in[:, 1:], dim=0)
         for pair in uniq_param_pairs:
             data_mask = torch.all(data_in[:, 1:] == pair, dim=-1)
             data_subset = data_in[data_mask]
@@ -680,10 +697,12 @@ class Stable(Distribution):
                 ]
             ).reshape(len(data_subset), 1)
 
+        # reshape to original tensor
+        data_out = torch.reshape(data_out, value_shape)        
         # account for standardization
         data_out = data_out / scale
 
-        return data_out.T[0]
+        return data_out
 
 
     def log_prob(self, value: torch.Tensor) -> torch.Tensor:
@@ -701,24 +720,30 @@ class Stable(Distribution):
             if torch.all(torch.reshape(self.alpha, (1, -1))[0, :] != 1.):
                 return self._cdf(value, alpha, beta, loc, scale)
             else:
-                value = torch.reshape(value, (1, -1))[0, :]
-                value, alpha, beta = broadcast_all(value, alpha, beta)
+                value_shape = value.shape
+                uniq_param_pairs = torch.cat((alpha.reshape(-1, 1), beta.reshape(-1, 1)), dim=-1)
 
+                value, alpha, beta = broadcast_all(value, alpha, beta)
+                value = torch.reshape(value, (1, -1))[0, :]
+                alpha = torch.reshape(alpha, (1, -1))[0, :]
+                beta = torch.reshape(beta, (1, -1))[0, :]
                 data_in = torch.dstack((value, alpha, beta))[0]
                 data_out = torch.empty(size=(len(data_in), 1))
 
-                uniq_param_pairs = torch.unique(data_in[:, 1:], dim = 0)
                 for pair in uniq_param_pairs:
                     _alpha, _beta = pair
+                    if _alpha == 1.:
+                        _delta = loc + 2*_beta*scale * torch.log(scale) / M_PI
+                    else:
+                        _delta = loc
                     _delta = (loc + 2*_beta*scale * torch.log(scale) / M_PI if _alpha==1.0 else loc)
                     data_mask = torch.all(data_in[:, 1:] == pair, dim=-1)
                     _x = data_in[data_mask, 0]
                     data_out[data_mask] = self._cdf(_x, _alpha, _beta, loc=_delta, scale=scale).reshape(len(_x), 1)
 
-                output = data_out.T[0]
-                if output.shape == (1,):
-                    return output[0]
-                return output
+                data_out = torch.reshape(data_out, value_shape) 
+
+                return data_out       
     
 
     def _cdf(self, value, alpha, beta, loc, scale):
@@ -728,15 +753,6 @@ class Stable(Distribution):
         elif self._parametrization() == "S1":
             _cdf_single_value_piecewise = _cdf_single_value_piecewise_Z1
             _cf = _cf_Z1
-
-        value = torch.reshape(value, (1, -1))[0, :]
-        # standardize
-        value = (value - loc) / scale
-
-        value, alpha, beta = broadcast_all(value, alpha, beta)
-
-        data_in = torch.dstack((value, alpha, beta))[0]
-        data_out = torch.empty(size=(len(data_in), 1))
 
         cdf_default_method_name = self.cdf_default_method
         if cdf_default_method_name in ("piecewise", "best", "zolotarev"):
@@ -749,8 +765,21 @@ class Stable(Distribution):
             "piecewise_alpha_tol_near_one": self.piecewise_alpha_tol_near_one,
         }
 
-        # fft not supported (by now)
-        uniq_param_pairs = torch.unique(data_in[:, 1:], dim=0)
+        # retrieve original shape for reshaping lateron
+        loc, scale, value = broadcast_all(loc, scale, value)
+        value_shape = value.shape
+        # standardize
+        value = (value - loc) / scale
+         
+        uniq_param_pairs = torch.cat((alpha.reshape(-1, 1), beta.reshape(-1, 1)), dim=-1)
+
+        value, alpha, beta = broadcast_all(value, alpha, beta)
+        value = torch.reshape(value, (1, -1))[0, :]
+        alpha = torch.reshape(alpha, (1, -1))[0, :]
+        beta = torch.reshape(beta, (1, -1))[0, :]
+        data_in = torch.dstack((value, alpha, beta))[0]
+        data_out = torch.empty(size=(len(data_in), 1))
+
         for pair in uniq_param_pairs:
             data_mask = torch.all(data_in[:, 1:] == pair, dim=-1)
             data_subset = data_in[data_mask]
@@ -761,7 +790,10 @@ class Stable(Distribution):
                 ]
             ).reshape(len(data_subset), 1)
 
-        return data_out.T[0]
+        # reshape to original tensor
+        data_out = torch.reshape(data_out, value_shape)        
+
+        return data_out
     
 
     def _fitstart(self, data, epsilon=1e-6):
@@ -805,7 +837,7 @@ if __name__ == "__main__":
         loc = params["loc"]
         scale = params["scale"]
 
-        torch_stable = Stable(alpha=torch.tensor(alpha), beta=torch.tensor(beta), loc=torch.tensor(loc), scale=torch.tensor(scale))
+        torch_stable = TorchStable(alpha=torch.tensor(alpha), beta=torch.tensor(beta), loc=torch.tensor(loc), scale=torch.tensor(scale))
         scipy_stable = levy_stable(alpha=alpha, beta=beta, loc=loc, scale=scale)
 
 
@@ -820,11 +852,15 @@ if __name__ == "__main__":
         results = {"data": data}
 
         torch_densities = torch_stable.pdf(data)
+        # print(torch_densities)
         results["t-PDF"] = torch_densities
         scipy_densities = scipy_stable.pdf(data)
+        # print(scipy_densities)
         results["s-PDF"] = scipy_densities
         torch_probs = torch_stable.cdf(data)
         results["t-CDF"] = torch_probs
+        # print(torch_probs)
         scipy_probs = scipy_stable.cdf(data)
         results["s-CDF"] = scipy_probs
+        # print(scipy_probs)
         print(tabulate(results, headers="keys"))
