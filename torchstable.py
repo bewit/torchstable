@@ -816,7 +816,7 @@ if __name__ == "__main__":
         device = "cuda"
     else:
         device = "cpu"
-    print(f"Torch current device: {torch.get_device()}")
+    print(f"Torch current device: {device}")
     torch.set_default_device(device)
 
 
