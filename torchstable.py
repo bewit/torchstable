@@ -813,11 +813,11 @@ if __name__ == "__main__":
 
     
     if torch.cuda.is_available():
-        torch.set_default_device("cuda")
+        device = "cuda"
     else:
-        torch.set_default_device("cpu")
-
+        device = "cpu"
     print(f"Torch current device: {torch.get_device()}")
+    torch.set_default_device(device)
 
 
     # qualitative analysis
