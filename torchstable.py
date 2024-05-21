@@ -847,20 +847,20 @@ if __name__ == "__main__":
         logvals = np.logspace(-5, 5, 11)
         x = list((-1) * logvals) + list(logvals)
         x.sort()
-        data = torch.tensor(x)
+        data = x
 
         print("Params: ")
         print(params)
 
         results = {"data": data}
 
-        torch_densities = torch_stable.pdf(data)
+        torch_densities = torch_stable.pdf(torch.tensor(data))
         # print(torch_densities)
         results["t-PDF"] = torch_densities
         scipy_densities = scipy_stable.pdf(data)
         # print(scipy_densities)
         results["s-PDF"] = scipy_densities
-        torch_probs = torch_stable.cdf(data)
+        torch_probs = torch_stable.cdf(torch.tensor(data))
         results["t-CDF"] = torch_probs
         # print(torch_probs)
         scipy_probs = scipy_stable.cdf(data)
