@@ -811,6 +811,14 @@ if __name__ == "__main__":
     from scipy.stats import levy_stable
     from tabulate import tabulate
 
+    
+    if torch.cuda.is_available():
+        torch.set_default_device("cuda")
+    else:
+        torch.set_default_device("cpu")
+
+    print(f"Torch current device: {torch.get_device()}")
+
 
     # qualitative analysis
 
@@ -826,39 +834,39 @@ if __name__ == "__main__":
         {"alpha": 0.5, "beta": -1.0, "loc": 0.0, "scale": 0.5},
     ]
 
-    # for params in params_set:
-    #     alpha = params["alpha"]
-    #     beta = params["beta"]
-    #     loc = params["loc"]
-    #     scale = params["scale"]
+    for params in params_set:
+        alpha = params["alpha"]
+        beta = params["beta"]
+        loc = params["loc"]
+        scale = params["scale"]
 
-    #     torch_stable = TorchStable(alpha=torch.tensor(alpha), beta=torch.tensor(beta), loc=torch.tensor(loc), scale=torch.tensor(scale))
-    #     scipy_stable = levy_stable(alpha=alpha, beta=beta, loc=loc, scale=scale)
+        torch_stable = TorchStable(alpha=torch.tensor(alpha), beta=torch.tensor(beta), loc=torch.tensor(loc), scale=torch.tensor(scale))
+        scipy_stable = levy_stable(alpha=alpha, beta=beta, loc=loc, scale=scale)
 
 
-    #     logvals = np.logspace(-5, 5, 11)
-    #     x = list((-1) * logvals) + list(logvals)
-    #     x.sort()
-    #     data = torch.tensor(x)
+        logvals = np.logspace(-5, 5, 11)
+        x = list((-1) * logvals) + list(logvals)
+        x.sort()
+        data = torch.tensor(x)
 
-    #     print("Params: ")
-    #     print(params)
+        print("Params: ")
+        print(params)
 
-    #     results = {"data": data}
+        results = {"data": data}
 
-    #     torch_densities = torch_stable.pdf(data)
-    #     # print(torch_densities)
-    #     results["t-PDF"] = torch_densities
-    #     scipy_densities = scipy_stable.pdf(data)
-    #     # print(scipy_densities)
-    #     results["s-PDF"] = scipy_densities
-    #     torch_probs = torch_stable.cdf(data)
-    #     results["t-CDF"] = torch_probs
-    #     # print(torch_probs)
-    #     scipy_probs = scipy_stable.cdf(data)
-    #     results["s-CDF"] = scipy_probs
-    #     # print(scipy_probs)
-    #     print(tabulate(results, headers="keys"))
+        torch_densities = torch_stable.pdf(data)
+        # print(torch_densities)
+        results["t-PDF"] = torch_densities
+        scipy_densities = scipy_stable.pdf(data)
+        # print(scipy_densities)
+        results["s-PDF"] = scipy_densities
+        torch_probs = torch_stable.cdf(data)
+        results["t-CDF"] = torch_probs
+        # print(torch_probs)
+        scipy_probs = scipy_stable.cdf(data)
+        results["s-CDF"] = scipy_probs
+        # print(scipy_probs)
+        print(tabulate(results, headers="keys"))
 
 
 
@@ -869,11 +877,6 @@ if __name__ == "__main__":
     from scipy.stats import norm
     from torch.utils import benchmark 
 
-
-    if torch.cuda.is_available():
-        torch.set_default_device("cuda")
-    else:
-        torch.set_default_device("cpu")
 
     for params in params_set:
         alpha = params["alpha"]
