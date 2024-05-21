@@ -669,21 +669,13 @@ class TorchStable(Distribution):
         value = (value - loc) / scale
          
         uniq_param_pairs = torch.cat((alpha.reshape(-1, 1), beta.reshape(-1, 1)), dim=-1)
-        # print("uniq_param_pairs", uniq_param_pairs.shape)
 
         value, alpha, beta = broadcast_all(value, alpha, beta)
-        # print("value", value.shape)
-        # print("alpha", alpha.shape)
-        # print("beta", beta.shape)
         value = torch.reshape(value, (1, -1))[0, :]
         alpha = torch.reshape(alpha, (1, -1))[0, :]
         beta = torch.reshape(beta, (1, -1))[0, :]
-        # print("value", value.shape)
-        # print("alpha", alpha.shape)
-        # print("beta", beta.shape)
+
         data_in = torch.dstack((value, alpha, beta))[0]
-        # print("data_in", data_in.shape)
-        # print(data_in)
         data_out = torch.empty(size=(len(data_in), 1))
 
         # uniq_param_pairs = torch.unique(data_in[:, 1:], dim=0)
@@ -819,6 +811,9 @@ if __name__ == "__main__":
     from scipy.stats import levy_stable
     from tabulate import tabulate
 
+
+    # qualitative analysis
+
     params_set = [
         {"alpha": 2.0, "beta": 0.0, "loc": 0.0, "scale": 1./np.sqrt(2.)},
         {"alpha": 1.5, "beta": 0.5, "loc": 0.0, "scale": 1.0},
@@ -864,3 +859,58 @@ if __name__ == "__main__":
         results["s-CDF"] = scipy_probs
         # print(scipy_probs)
         print(tabulate(results, headers="keys"))
+
+
+
+    # timing
+    import timeit
+    from functools import partial
+    from torch.distributions import Normal
+    from scipy.stats import norm
+
+    torch.set_default_device("cuda")
+
+    for params in params_set:
+        alpha = params["alpha"]
+        beta = params["beta"]
+        loc = params["loc"]
+        scale = params["scale"]
+
+        torch_stable = TorchStable(alpha=torch.tensor(alpha), beta=torch.tensor(beta), loc=torch.tensor(loc), scale=torch.tensor(scale))
+        scipy_stable = levy_stable(alpha=alpha, beta=beta, loc=loc, scale=scale)
+
+
+        n = 100
+        vals = np.random.random((n, 1))
+        torch_vals = torch.tensor(vals)
+
+        repeats = 10
+        number = 10
+        torch_time_pdf = timeit.Timer(partial(torch_stable.pdf, torch_vals)).repeat(repeat=repeats, number=number)
+        scipy_time_pdf = timeit.Timer(partial(scipy_stable.pdf, vals)).repeat(repeat=repeats, number=number)
+        torch_time_cdf = timeit.Timer(partial(torch_stable.cdf, torch_vals)).repeat(repeat=repeats, number=number)
+        scipy_time_cdf = timeit.Timer(partial(scipy_stable.cdf, vals)).repeat(repeat=repeats, number=number)
+
+        results =  {"t-pdf": torch_time_pdf, "s-pdf": scipy_time_pdf, "t-cdf": torch_time_cdf, "s-cdf": scipy_time_cdf}
+
+        if alpha == 2.0:
+            torch_normal = Normal(loc=torch.tensor(loc), scale=torch.tensor(scale * np.sqrt(2.)))
+            scipy_normal = norm(loc=loc, scale=scale*np.sqrt(2.))
+
+            def torch_normal_pdf(data):
+                return torch.exp(torch_normal.log_prob(data))
+
+            torch_normal_time_pdf = timeit.Timer(partial(torch_normal_pdf, torch_vals)).repeat(repeat=repeats, number=number)
+            scipy_normal_time_pdf = timeit.Timer(partial(scipy_normal.pdf, vals)).repeat(repeat=repeats, number=number)
+            torch_normal_time_cdf = timeit.Timer(partial(torch_normal.cdf, torch_vals)).repeat(repeat=repeats, number=number)
+            scipy_normal_time_cdf = timeit.Timer(partial(scipy_normal.cdf, vals)).repeat(repeat=repeats, number=number)
+            results["t-pdf_normal"] = torch_normal_time_pdf
+            results["s-pdf_normal"] = scipy_normal_time_pdf
+            results["t-cdf_normal"] = torch_normal_time_cdf
+            results["s-cdf_normal"] = scipy_normal_time_cdf
+
+        import pandas as pd
+        results = pd.DataFrame(data = results)
+        print("Params: ")
+        print(params)
+        print(results.describe())
