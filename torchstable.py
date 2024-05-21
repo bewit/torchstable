@@ -826,39 +826,39 @@ if __name__ == "__main__":
         {"alpha": 0.5, "beta": -1.0, "loc": 0.0, "scale": 0.5},
     ]
 
-    for params in params_set:
-        alpha = params["alpha"]
-        beta = params["beta"]
-        loc = params["loc"]
-        scale = params["scale"]
+    # for params in params_set:
+    #     alpha = params["alpha"]
+    #     beta = params["beta"]
+    #     loc = params["loc"]
+    #     scale = params["scale"]
 
-        torch_stable = TorchStable(alpha=torch.tensor(alpha), beta=torch.tensor(beta), loc=torch.tensor(loc), scale=torch.tensor(scale))
-        scipy_stable = levy_stable(alpha=alpha, beta=beta, loc=loc, scale=scale)
+    #     torch_stable = TorchStable(alpha=torch.tensor(alpha), beta=torch.tensor(beta), loc=torch.tensor(loc), scale=torch.tensor(scale))
+    #     scipy_stable = levy_stable(alpha=alpha, beta=beta, loc=loc, scale=scale)
 
 
-        logvals = np.logspace(-5, 5, 11)
-        x = list((-1) * logvals) + list(logvals)
-        x.sort()
-        data = torch.tensor(x)
+    #     logvals = np.logspace(-5, 5, 11)
+    #     x = list((-1) * logvals) + list(logvals)
+    #     x.sort()
+    #     data = torch.tensor(x)
 
-        print("Params: ")
-        print(params)
+    #     print("Params: ")
+    #     print(params)
 
-        results = {"data": data}
+    #     results = {"data": data}
 
-        torch_densities = torch_stable.pdf(data)
-        # print(torch_densities)
-        results["t-PDF"] = torch_densities
-        scipy_densities = scipy_stable.pdf(data)
-        # print(scipy_densities)
-        results["s-PDF"] = scipy_densities
-        torch_probs = torch_stable.cdf(data)
-        results["t-CDF"] = torch_probs
-        # print(torch_probs)
-        scipy_probs = scipy_stable.cdf(data)
-        results["s-CDF"] = scipy_probs
-        # print(scipy_probs)
-        print(tabulate(results, headers="keys"))
+    #     torch_densities = torch_stable.pdf(data)
+    #     # print(torch_densities)
+    #     results["t-PDF"] = torch_densities
+    #     scipy_densities = scipy_stable.pdf(data)
+    #     # print(scipy_densities)
+    #     results["s-PDF"] = scipy_densities
+    #     torch_probs = torch_stable.cdf(data)
+    #     results["t-CDF"] = torch_probs
+    #     # print(torch_probs)
+    #     scipy_probs = scipy_stable.cdf(data)
+    #     results["s-CDF"] = scipy_probs
+    #     # print(scipy_probs)
+    #     print(tabulate(results, headers="keys"))
 
 
 
@@ -867,8 +867,13 @@ if __name__ == "__main__":
     from functools import partial
     from torch.distributions import Normal
     from scipy.stats import norm
+    from torch.utils import benchmark 
 
-    torch.set_default_device("cuda")
+
+    if torch.cuda.is_available():
+        torch.set_default_device("cuda")
+    else:
+        torch.set_default_device("cpu")
 
     for params in params_set:
         alpha = params["alpha"]
@@ -876,41 +881,41 @@ if __name__ == "__main__":
         loc = params["loc"]
         scale = params["scale"]
 
-        torch_stable = TorchStable(alpha=torch.tensor(alpha), beta=torch.tensor(beta), loc=torch.tensor(loc), scale=torch.tensor(scale))
-        scipy_stable = levy_stable(alpha=alpha, beta=beta, loc=loc, scale=scale)
+        print("Params:")
+        print(params)
 
+        #torch_stable = TorchStable(alpha=torch.tensor(alpha), beta=torch.tensor(beta), loc=torch.tensor(loc), scale=torch.tensor(scale))
+        torch_stable_setup = "from __main__ import TorchStable \ntorch_stable = TorchStable(torch.tensor(alpha), torch.tensor(beta), torch.tensor(loc), torch.tensor(scale))"
+        scipy_stable = levy_stable(alpha=alpha, beta=beta, loc=loc, scale=scale)
 
         n = 100
         vals = np.random.random((n, 1))
         torch_vals = torch.tensor(vals)
 
-        repeats = 10
-        number = 10
-        torch_time_pdf = timeit.Timer(partial(torch_stable.pdf, torch_vals)).repeat(repeat=repeats, number=number)
-        scipy_time_pdf = timeit.Timer(partial(scipy_stable.pdf, vals)).repeat(repeat=repeats, number=number)
-        torch_time_cdf = timeit.Timer(partial(torch_stable.cdf, torch_vals)).repeat(repeat=repeats, number=number)
-        scipy_time_cdf = timeit.Timer(partial(scipy_stable.cdf, vals)).repeat(repeat=repeats, number=number)
+        repeats = 5
+        number = 1000
+        # torch_time_pdf = timeit.Timer(partial(torch_stable.pdf, torch_vals)).repeat(repeat=repeats, number=number)
+        torch_time_pdf = benchmark.Timer(stmt="torch_stable.pdf(x)", setup=torch_stable_setup, globals={"alpha": alpha, "beta": beta, "loc": loc, "scale": scale, "x": torch_vals})
+        print(torch_time_pdf.timeit(number))
+        scipy_time_pdf = min(timeit.Timer(partial(scipy_stable.pdf, vals)).repeat(repeat=repeats, number=number)) / number
+        print(f"Scipy stable PDF: {scipy_time_pdf} seconds")
+        torch_time_cdf = benchmark.Timer(stmt="torch_stable.cdf(x)", setup=torch_stable_setup, globals={"alpha": alpha, "beta": beta, "loc": loc, "scale": scale, "x": torch_vals})
+        print(torch_time_cdf.timeit(number))
+        scipy_time_cdf = min(timeit.Timer(partial(scipy_stable.cdf, vals)).repeat(repeat=repeats, number=number)) / number
+        print(f"Scipy stable CDF: {scipy_time_cdf} seconds")
 
-        results =  {"t-pdf": torch_time_pdf, "s-pdf": scipy_time_pdf, "t-cdf": torch_time_cdf, "s-cdf": scipy_time_cdf}
 
         if alpha == 2.0:
-            torch_normal = Normal(loc=torch.tensor(loc), scale=torch.tensor(scale * np.sqrt(2.)))
+            # torch_normal = Normal(loc=torch.tensor(loc), scale=torch.tensor(scale * np.sqrt(2.)))
+            torch_normal_setup = """from torch.distributions import Normal \nnormal = Normal(loc=torch.tensor(loc), scale=torch.tensor(scale))"""
             scipy_normal = norm(loc=loc, scale=scale*np.sqrt(2.))
 
-            def torch_normal_pdf(data):
-                return torch.exp(torch_normal.log_prob(data))
 
-            torch_normal_time_pdf = timeit.Timer(partial(torch_normal_pdf, torch_vals)).repeat(repeat=repeats, number=number)
-            scipy_normal_time_pdf = timeit.Timer(partial(scipy_normal.pdf, vals)).repeat(repeat=repeats, number=number)
-            torch_normal_time_cdf = timeit.Timer(partial(torch_normal.cdf, torch_vals)).repeat(repeat=repeats, number=number)
-            scipy_normal_time_cdf = timeit.Timer(partial(scipy_normal.cdf, vals)).repeat(repeat=repeats, number=number)
-            results["t-pdf_normal"] = torch_normal_time_pdf
-            results["s-pdf_normal"] = scipy_normal_time_pdf
-            results["t-cdf_normal"] = torch_normal_time_cdf
-            results["s-cdf_normal"] = scipy_normal_time_cdf
-
-        import pandas as pd
-        results = pd.DataFrame(data = results)
-        print("Params: ")
-        print(params)
-        print(results.describe())
+            torch_normal_time_pdf = benchmark.Timer(stmt="torch.exp(normal.log_prob(x))", setup=torch_normal_setup, globals={"loc": loc, "scale": scale, "x": torch_vals})
+            print(torch_normal_time_pdf.timeit(number))            
+            scipy_normal_time_pdf = min(timeit.Timer(partial(scipy_normal.pdf, vals)).repeat(repeat=repeats, number=number)) / number
+            print(f"Scipy normal PDF: {scipy_normal_time_pdf} seconds")
+            torch_normal_time_cdf = benchmark.Timer(stmt="normal.cdf(x)", setup=torch_normal_setup, globals={"loc": loc, "scale": scale, "x": torch_vals})
+            print(torch_normal_time_cdf.timeit(number))
+            scipy_normal_time_cdf = min(timeit.Timer(partial(scipy_normal.cdf, vals)).repeat(repeat=repeats, number=number)) / number
+            print(f"Scipy normal CDF: {scipy_normal_time_cdf} seconds")
