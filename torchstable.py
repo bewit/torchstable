@@ -821,6 +821,7 @@ if __name__ == "__main__":
 
 
     # qualitative analysis
+    print("=============== Test ===============")
 
     params_set = [
         {"alpha": 2.0, "beta": 0.0, "loc": 0.0, "scale": 1./np.sqrt(2.)},
@@ -876,9 +877,15 @@ if __name__ == "__main__":
     from torch.distributions import Normal
     from scipy.stats import norm
     from torch.utils import benchmark 
+    from rtpt import RTPT
 
 
-    for params in params_set:
+    print("=============== Timing ===============")
+    max_iter = len(params_set)
+    rtpt = RTPT(name_initials="BW", experiment_name="TorchStable distribution benchmarking", max_iterations=max_iter)
+    rtpt.start()
+
+    for i, params in enumerate(params_set):
         alpha = params["alpha"]
         beta = params["beta"]
         loc = params["loc"]
@@ -922,3 +929,6 @@ if __name__ == "__main__":
             print(torch_normal_time_cdf.timeit(number))
             scipy_normal_time_cdf = min(timeit.Timer(partial(scipy_normal.cdf, vals)).repeat(repeat=repeats, number=number)) / number
             print(f"Scipy normal CDF: {scipy_normal_time_cdf} seconds")
+
+
+        rtpt.step(f"{i+1}/{max_iter}")
