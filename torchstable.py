@@ -30,7 +30,7 @@ STANDARD_NORMAL = dist.Normal(loc=torch.tensor(0.0), scale=torch.tensor(1.0))
 
 # heavily recommend MonteCarlo here, as the functions are too complex for Simpson/Trapezoid/Boole
 integrator = MonteCarlo()
-integrator_params = {"N": 10000}
+N = 10000
 # Parameters for the LBFGS optimization used for determining tighter integration bounds for the CDF computation if alpha > 1.0
 LBFGS_EPOCHS = 20
 LBFGS_LR = 0.1
@@ -181,9 +181,9 @@ def _pdf_single_value_cf_integrate(Phi, x, alpha, beta, **kwds):
     # vals1 = torch.empty(size=(max_iter, 1))
     # vals2 = torch.empty(size=(max_iter, 1))
     # for i in range(max_iter):
-    int1 = integrator.integrate(transformed_integrand1, dim=1, integration_domain=[[0, 1]], **integrator_params)
+    int1 = integrator.integrate(transformed_integrand1, dim=1, N=N, integration_domain=[[0, 1]])
         # vals1[i] = int1
-    int2 = integrator.integrate(transformed_integrand2, dim=1, integration_domain=[[0, 1]], **integrator_params)
+    int2 = integrator.integrate(transformed_integrand2, dim=1, N=N, integration_domain=[[0, 1]])
         # vals2[i] = int2
 
     # int1 = torch.nanmean(vals1) if not torch.all(torch.isnan(vals1)) else torch.tensor(0.0)
@@ -299,7 +299,7 @@ def _pdf_single_value_piecewise_post_rounding_Z0(x0, alpha, beta, x_tol_near_zet
         # max_iter = INTEGRATION_REPETITIONS
         # vals = torch.empty(size=(max_iter, 1))
         # for i in range(max_iter):
-        intg = integrator.integrate(integrand, dim=1, **integrator_params, integration_domain=[[-xi, M_PI/2.]])
+        intg = integrator.integrate(integrand, dim=1, N=N, integration_domain=[[-xi, M_PI/2.]])
             # vals[i] = intg
         # intg = torch.nanmean(vals) if not torch.all(torch.isnan(vals)) else torch.tensor(0.0)
 
@@ -414,7 +414,7 @@ def _cdf_single_value_piecewise_post_rounding_Z0(x0, alpha, beta, x_tol_near_zet
         # max_iter = INTEGRATION_REPETITIONS
         # vals = torch.empty(size=(max_iter, 1))
         # for i in range(max_iter):
-        intg = integrator.integrate(integrand, dim=1, **integrator_params, integration_domain=[[left_support, right_support]])
+        intg = integrator.integrate(integrand, dim=1, N=N, integration_domain=[[left_support, right_support]])
         #     vals[i] = intg
         # intg = torch.nanmean(vals) if not torch.all(torch.isnan(vals)) else torch.tensor(0.0)
 
@@ -842,6 +842,10 @@ if __name__ == "__main__":
 
     params_set = [
         {"alpha": 2.0, "beta": 0.0, "loc": 0.0, "scale": 1./np.sqrt(2.)},
+        {"alpha": 1.9991, "beta": 0.0, "loc": 0.0, "scale": 1./np.sqrt(2.)},
+        {"alpha": 1.999, "beta": 0.0, "loc": 0.0, "scale": 1./np.sqrt(2.)},
+        {"alpha": 1.99, "beta": 0.0, "loc": 0.0, "scale": 1./np.sqrt(2.)},
+        {"alpha": 1.9, "beta": 0.0, "loc": 0.0, "scale": 1./np.sqrt(2.)},
         {"alpha": 1.5, "beta": 0.0, "loc": 0.0, "scale": 1.0},
         {"alpha": 1.5, "beta": 0.5, "loc": 0.0, "scale": 1.0},
         {"alpha": 1.5, "beta": 1.0, "loc": 0.0, "scale": 1.0},
