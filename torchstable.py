@@ -25,15 +25,17 @@ M_PI = torch.tensor(math.pi)
 M_PI_2 = torch.tensor(1.57079632679489661923)
 M_1_PI = torch.tensor(0.31830988618379067154)
 M_2_PI = torch.tensor(0.63661977236758134308) 
+SQRT_1_2 = 1 / torch.sqrt(torch.tensor(2.0))
+STANDARD_NORMAL = dist.Normal(loc=torch.tensor(0.0), scale=torch.tensor(1.0))
 
 # heavily recommend MonteCarlo here, as the functions are too complex for Simpson/Trapezoid/Boole
 integrator = MonteCarlo()
-integrator_params = {"N": 20000}
+integrator_params = {"N": 10000}
 # Parameters for the LBFGS optimization used for determining tighter integration bounds for the CDF computation if alpha > 1.0
 LBFGS_EPOCHS = 20
 LBFGS_LR = 0.1
 # repetitions of all integral computations where alpha != 1.0. the mean over all computations is returned. 1 is sufficient, more increases precision
-INTEGRATION_REPETITIONS = 5
+#INTEGRATION_REPETITIONS = 1 # NOTE: I thought this was a good idea, but turns out that iterating slows down the computation so much that it's much better to just increase the number of evaluation nodes N in variable integrator_params
 # repetitions of all integral computations where alpha == 1.0. the mean over all computations is returned. I suggest at least 10
 INTEGRATION_REPETITIONS_ALPHA_1 = 20
 
@@ -110,6 +112,10 @@ class Nolan:
         )
 
 
+def _norm_pdf(x):
+    return torch.exp(-torch.pow(x, 2) / 2.0) / torch.sqrt(2. * M_PI)
+
+
 def _transform_half_real_line_to_unit_interval(fct, t):
     """Given a function that is defined on [0, +inf), transform it to the domain [0, 1]"""
     return fct(t/(1-t)) / torch.pow(1-t, 2)
@@ -171,17 +177,17 @@ def _pdf_single_value_cf_integrate(Phi, x, alpha, beta, **kwds):
     transformed_integrand1 = partial(_transform_half_real_line_to_unit_interval, integrand1)
     transformed_integrand2 = partial(_transform_half_real_line_to_unit_interval, integrand2)
 
-    max_iter = INTEGRATION_REPETITIONS
-    vals1 = torch.empty(size=(max_iter, 1))
-    vals2 = torch.empty(size=(max_iter, 1))
-    for i in range(max_iter):
-        int1 = integrator.integrate(transformed_integrand1, dim=1, integration_domain=[[0, 1]], **integrator_params)
-        vals1[i] = int1
-        int2 = integrator.integrate(transformed_integrand2, dim=1, integration_domain=[[0, 1]], **integrator_params)
-        vals2[i] = int2
+    # max_iter = INTEGRATION_REPETITIONS
+    # vals1 = torch.empty(size=(max_iter, 1))
+    # vals2 = torch.empty(size=(max_iter, 1))
+    # for i in range(max_iter):
+    int1 = integrator.integrate(transformed_integrand1, dim=1, integration_domain=[[0, 1]], **integrator_params)
+        # vals1[i] = int1
+    int2 = integrator.integrate(transformed_integrand2, dim=1, integration_domain=[[0, 1]], **integrator_params)
+        # vals2[i] = int2
 
-    int1 = torch.nanmean(vals1) if not torch.all(torch.isnan(vals1)) else torch.tensor(0.0)
-    int2 = torch.nanmean(vals2) if not torch.all(torch.isnan(vals2)) else torch.tensor(0.0)
+    # int1 = torch.nanmean(vals1) if not torch.all(torch.isnan(vals1)) else torch.tensor(0.0)
+    # int2 = torch.nanmean(vals2) if not torch.all(torch.isnan(vals2)) else torch.tensor(0.0)
 
     return (int1 + int2) / M_PI
 
@@ -216,11 +222,16 @@ def _pdf_single_value_piecewise_Z0(x0, alpha, beta, **kwds):
     zeta = -beta * torch.tan(M_PI * alpha / 2.0)
     x0, alpha, beta = _nolan_round_difficult_input(x0, alpha, beta, zeta, x_tol_near_zeta, alpha_tol_near_one)
 
-    if alpha == 2.0:
-        def _norm_pdf(x):
-            return torch.exp(-torch.pow(x, 2) / 2.0) / torch.sqrt(2. * M_PI)
-        return _norm_pdf(x0 / torch.sqrt(torch.tensor(2.0))) / torch.sqrt(torch.tensor(2.0))
+    if alpha > 1.999: # alpha == 2.0, but relaxed this because the approximtion is good enough to benefit from speedup here
+        return _norm_pdf(x0 * SQRT_1_2) * SQRT_1_2
+        # return torch.exp(STANDARD_NORMAL.log_prob(x0 * SQRT_1_2)) * SQRT_1_2
     elif alpha == 0.5 and beta == 1.0:
+        _x = x0 + 1.
+        if _x <= 0:
+            return torch.tensor(0.0)
+        return torch.tensor(1.0 / torch.sqrt(2.0 * M_PI * _x) / _x * torch.exp(-1.0 / (2 * _x)))
+    elif alpha == 0.5 and beta == -1.0:
+        x0 = -x0
         _x = x0 + 1.
         if _x <= 0:
             return torch.tensor(0.0)
@@ -285,12 +296,12 @@ def _pdf_single_value_piecewise_post_rounding_Z0(x0, alpha, beta, x_tol_near_zet
         intg = torch.nanmean(vals) if not torch.all(torch.isnan(vals)) else torch.tensor(0.0)
 
     else:
-        max_iter = INTEGRATION_REPETITIONS
-        vals = torch.empty(size=(max_iter, 1))
-        for i in range(max_iter):
-            intg = integrator.integrate(integrand, dim=1, **integrator_params, integration_domain=[[-xi, M_PI/2.]])
-            vals[i] = intg
-        intg = torch.nanmean(vals) if not torch.all(torch.isnan(vals)) else torch.tensor(0.0)
+        # max_iter = INTEGRATION_REPETITIONS
+        # vals = torch.empty(size=(max_iter, 1))
+        # for i in range(max_iter):
+        intg = integrator.integrate(integrand, dim=1, **integrator_params, integration_domain=[[-xi, M_PI/2.]])
+            # vals[i] = intg
+        # intg = torch.nanmean(vals) if not torch.all(torch.isnan(vals)) else torch.tensor(0.0)
 
 
     return c2 * intg
@@ -311,13 +322,19 @@ def _cdf_single_value_piecewise_Z0(x0, alpha, beta, **kwds):
     zeta = -beta * torch.tan(M_PI * alpha / 2.)
     x0, alpha, beta = _nolan_round_difficult_input(x0, alpha, beta, zeta, x_tol_near_zeta, alpha_tol_near_one)
 
-    if alpha == 2.0:
-        dist.Normal(torch.tensor([0.0]), torch.tensor([1.0])).cdf(x0 / torch.sqrt(torch.tensor(2.)))
+    if alpha > 1.999: # alpha == 2.0, but relaxed this because the approximtion is good enough to benefit from speedup here
+        return STANDARD_NORMAL.cdf(x0  * SQRT_1_2)
     elif alpha == 0.5 and beta == 1.0:
         _x = x0 + 1.
         if _x <= 0:
             return torch.tensor(0.)
         return (1. - torch.erf(torch.sqrt(0.5 / _x)))
+    elif alpha == 0.5 and beta == -1.0:
+        x0 = -x0
+        _x = x0 + 1.
+        if _x <= 0:
+            return torch.tensor(0.)
+        return torch.erf(torch.sqrt(0.5 / _x))
     elif alpha == 1.0 and beta == 0.0:
         return 0.5 + torch.arctan(x0) / M_PI
     
@@ -394,12 +411,12 @@ def _cdf_single_value_piecewise_post_rounding_Z0(x0, alpha, beta, x_tol_near_zet
         intg = torch.nanmean(vals) if not torch.all(torch.isnan(vals)) else torch.tensor(0.0)
     
     else:
-        max_iter = INTEGRATION_REPETITIONS
-        vals = torch.empty(size=(max_iter, 1))
-        for i in range(max_iter):
-            intg = integrator.integrate(integrand, dim=1, **integrator_params, integration_domain=[[left_support, right_support]])
-            vals[i] = intg
-        intg = torch.nanmean(vals) if not torch.all(torch.isnan(vals)) else torch.tensor(0.0)
+        # max_iter = INTEGRATION_REPETITIONS
+        # vals = torch.empty(size=(max_iter, 1))
+        # for i in range(max_iter):
+        intg = integrator.integrate(integrand, dim=1, **integrator_params, integration_domain=[[left_support, right_support]])
+        #     vals[i] = intg
+        # intg = torch.nanmean(vals) if not torch.all(torch.isnan(vals)) else torch.tensor(0.0)
 
     return c1 + c3 * intg
 
@@ -825,14 +842,18 @@ if __name__ == "__main__":
 
     params_set = [
         {"alpha": 2.0, "beta": 0.0, "loc": 0.0, "scale": 1./np.sqrt(2.)},
+        {"alpha": 1.5, "beta": 0.0, "loc": 0.0, "scale": 1.0},
         {"alpha": 1.5, "beta": 0.5, "loc": 0.0, "scale": 1.0},
-        {"alpha": 1.5, "beta": 0.5, "loc": 1000.0, "scale": 100.0},
-        {"alpha": 1.0, "beta": 0.0, "loc": 0.0, "scale": 1.0},
-        {"alpha": 1.0, "beta": 1.0, "loc": 4.2, "scale": 1.0},
-        {"alpha": 1.0, "beta": -1.0, "loc": 4.2, "scale": 1.0},
-        {"alpha": 0.5, "beta": 0.5, "loc": 0.0, "scale": 0.5},
-        {"alpha": 0.5, "beta": 1.0, "loc": 0.0, "scale": 0.5},
-        {"alpha": 0.5, "beta": -1.0, "loc": 0.0, "scale": 0.5},
+        {"alpha": 1.5, "beta": 1.0, "loc": 0.0, "scale": 1.0},
+        {"alpha": 1.5, "beta": -1.0, "loc": 0.0, "scale": 1.0},
+        {"alpha": 1.0, "beta": 0.0, "loc": 0.0, "scale": 1.0},        
+        {"alpha": 1.0, "beta": 0.5, "loc": 0.0, "scale": 1.0},
+        {"alpha": 1.0, "beta": 1.0, "loc": 0.0, "scale": 1.0},
+        {"alpha": 1.0, "beta": -1.0, "loc": 0.0, "scale": 1.0},
+        {"alpha": 0.5, "beta": 0.0, "loc": 0.0, "scale": 1.0},
+        {"alpha": 0.5, "beta": 0.5, "loc": 0.0, "scale": 1.0},
+        {"alpha": 0.5, "beta": 1.0, "loc": 0.0, "scale": 1.0},
+        {"alpha": 0.5, "beta": -1.0, "loc": 0.0, "scale": 1.0},
     ]
 
     for params in params_set:
@@ -882,7 +903,7 @@ if __name__ == "__main__":
 
     print("=============== Timing ===============")
     max_iter = len(params_set)
-    rtpt = RTPT(name_initials="BW", experiment_name="TorchStable distribution benchmarking", max_iterations=max_iter)
+    rtpt = RTPT(name_initials="BW", experiment_name="TorchStable distribution benchmark", max_iterations=max_iter)
     rtpt.start()
 
     for i, params in enumerate(params_set):
@@ -902,8 +923,8 @@ if __name__ == "__main__":
         vals = np.random.random((n, 1))
         torch_vals = torch.tensor(vals)
 
-        repeats = 5
-        number = 1000
+        repeats = 1
+        number = 100
         # torch_time_pdf = timeit.Timer(partial(torch_stable.pdf, torch_vals)).repeat(repeat=repeats, number=number)
         torch_time_pdf = benchmark.Timer(stmt="torch_stable.pdf(x)", setup=torch_stable_setup, globals={"alpha": alpha, "beta": beta, "loc": loc, "scale": scale, "x": torch_vals})
         print(torch_time_pdf.timeit(number))
