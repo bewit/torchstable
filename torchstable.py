@@ -222,7 +222,7 @@ def _pdf_single_value_piecewise_Z0(x0, alpha, beta, **kwds):
     zeta = -beta * torch.tan(M_PI * alpha / 2.0)
     x0, alpha, beta = _nolan_round_difficult_input(x0, alpha, beta, zeta, x_tol_near_zeta, alpha_tol_near_one)
 
-    if alpha > 1.999: # alpha == 2.0, but relaxed this because the approximtion is good enough to benefit from speedup here
+    if alpha > 1.999: # alpha == 2.0, but relaxed this because the approximtion is good enough to benefit from speedup here and optimization in log space might never reach alpha=2.0
         return _norm_pdf(x0 * SQRT_1_2) * SQRT_1_2
         # return torch.exp(STANDARD_NORMAL.log_prob(x0 * SQRT_1_2)) * SQRT_1_2
     elif alpha == 0.5 and beta == 1.0:
@@ -322,7 +322,7 @@ def _cdf_single_value_piecewise_Z0(x0, alpha, beta, **kwds):
     zeta = -beta * torch.tan(M_PI * alpha / 2.)
     x0, alpha, beta = _nolan_round_difficult_input(x0, alpha, beta, zeta, x_tol_near_zeta, alpha_tol_near_one)
 
-    if alpha > 1.999: # alpha == 2.0, but relaxed this because the approximtion is good enough to benefit from speedup here
+    if alpha > 1.999: # alpha == 2.0, but relaxed this because the approximtion is good enough to benefit from speedup here and optimization in log space might never reach alpha=2.0
         return STANDARD_NORMAL.cdf(x0  * SQRT_1_2)
     elif alpha == 0.5 and beta == 1.0:
         _x = x0 + 1.
@@ -333,6 +333,7 @@ def _cdf_single_value_piecewise_Z0(x0, alpha, beta, **kwds):
         x0 = -x0
         _x = x0 + 1.
         if _x <= 0:
+            # TODO: this leads to CDF=0.0 where it clearly should be 1.0, fix this!
             return torch.tensor(0.)
         return torch.erf(torch.sqrt(0.5 / _x))
     elif alpha == 1.0 and beta == 0.0:

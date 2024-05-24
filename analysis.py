@@ -26,6 +26,7 @@ def mci_evaluation_nodes():
     repetitions = 20
     Ns = (10**1, 10**2, 10**3, 10**4, 10**5, 10**6)
     data_size = 1000
+    uniform_sampling_interval = (-5., 5.)
     error_function = MAE
 
     alphas = (1.9, 1.4, 0.9)
@@ -47,7 +48,7 @@ def mci_evaluation_nodes():
             torchstable.N = N
 
             for repetition in range(repetitions):
-                data = torch.randn(data_size)
+                data = torch.FloatTensor(data_size,).uniform_(*uniform_sampling_interval)
 
                 torch_stable = torchstable.TorchStable(**_to_tensors(params))
                 torch_densities = torch_stable.pdf(data)
@@ -65,8 +66,10 @@ def mci_evaluation_nodes():
 
         means = torch.mean(errors, dim=1)
         error = [torch.abs(means - torch.min(errors, dim=1)[0]), torch.abs(means - torch.max(errors, dim=1)[0])]
+        stdevs = torch.std(errors, dim=1)
+        relative_stdevs = stdevs / means
         print(f"params: {params}")
-        print(tabulate({"N": Ns, "means": means, "error_min": torch.min(errors, dim=1)[0], "error_max": torch.max(errors, dim=1)[0], "time": times}, headers="keys"))
+        print(tabulate({"N": Ns, "means": means, "error_min": torch.min(errors, dim=1)[0], "error_max": torch.max(errors, dim=1)[0], "stdev": stdevs, "stdev/mean": relative_stdevs, "time": times}, headers="keys"))
         x_scatter = np.random.uniform(0.8, 1.2)
         plt.errorbar(np.array(Ns) * x_scatter, means, yerr=error, fmt="o", label=f"S({params['alpha']},{params['beta']})")
         
