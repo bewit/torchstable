@@ -6,14 +6,15 @@ import seaborn as sns
 from tabulate import tabulate
 
 linestyles = ["-", "--", "-.", ":", ][::-1]
+colors = ["blue", "orange", "green", "red"][::-1]
 
 
 
 def plot_characteristic_function(grouped_parameter_set: list[list[dict[str, torch.Tensor]]], parametrization: str, filename: str, linspace: torch.Tensor = torch.linspace(-10, 10, 200)) -> None:
     number_of_groups = len(grouped_parameter_set)
     fig, axes = plt.subplots(nrows = number_of_groups, ncols=2)
-    fig.set_size_inches(10, 3 * number_of_groups)
-    fig.set_dpi(2000)
+    fig.set_size_inches(20, 6 * number_of_groups)
+    fig.set_dpi(5000)
     
     for i, group in enumerate(grouped_parameter_set):
         group_axis = axes[i]
@@ -31,12 +32,12 @@ def plot_characteristic_function(grouped_parameter_set: list[list[dict[str, torc
             reals = cf_values.real
             imaginaries = cf_values.imag
 
-            group_axis[0].plot(linspace, reals, label=representation, linestyle=linestyles[-j-1])
-            group_axis[1].plot(linspace, imaginaries, label=representation, linestyle=linestyles[-j-1])
+            group_axis[0].plot(linspace, reals, label=representation, color=colors[-j-1], linestyle=linestyles[-j-1], linewidth=0.7)
+            group_axis[1].plot(linspace, imaginaries, label=representation, color=colors[-j-1], linestyle=linestyles[-j-1], linewidth=0.7)
         
         group_axis[0].legend()
-        group_axis[0].set_ylim((-0.6, 1.1))
-        group_axis[0].set_yticks([-0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0])
+        group_axis[0].set_ylim((-0.3, 1.1))
+        group_axis[0].set_yticks([-0.25, 0.0, 0.25, 0.5, 0.75, 1.0])
         group_axis[1].legend()
         group_axis[1].set_ylim((-0.6, 0.6))
         group_axis[1].set_yticks([-0.5, -0.25, 0.0, 0.25, 0.5])
@@ -53,8 +54,8 @@ def plot_empirical_characteristic_function(grouped_parameter_set: list[list[dict
     
     number_of_groups = len(grouped_parameter_set)
     fig, axes = plt.subplots(nrows = number_of_groups, ncols=2)
-    fig.set_size_inches(10, 3 * number_of_groups)
-    fig.set_dpi(2000)
+    fig.set_size_inches(20, 6 * number_of_groups)
+    fig.set_dpi(5000)
     
     for i, group in enumerate(grouped_parameter_set):
         group_axis = axes[i]
@@ -63,23 +64,40 @@ def plot_empirical_characteristic_function(grouped_parameter_set: list[list[dict
             beta = torch.tensor(params["beta"])
             loc = torch.tensor(params["loc"])
             scale = torch.tensor(params["scale"])
-            representation = f"ECF(S({alpha}, {beta}))"
+            representation = f"S({alpha}, {beta})"
+            ecf_representation = f"ECF({representation})"
 
-            levy_stable.parameterization = parametrization
             scipy_stable = levy_stable(alpha=alpha, beta=beta, loc=loc, scale=scale)
-            scipy_stable.parameterization = parametrization
+            scipy_stable.parameterization = parametrization # NOTE: this is executed but ignored from scipy during sampling
             samples = torch.tensor(scipy_stable.rvs((n_samples, 1), random_state=seed))
-            cf_values = empirical_characteristic_function(data=samples, t=linspace.reshape(-1, 1))
+            # levy_stable.rvs() ignores S0-parameterization, hence transform then here
+            if parametrization == "S0":
+                samples = torch.where(
+                    alpha == 1.0,
+                    samples - (beta * 2 * scale * torch.log(scale) / torch.pi),
+                    samples - scale * beta * torch.tan(torch.pi * alpha / 2.0),
+                )
+            ecf_values = empirical_characteristic_function(data=samples, t=linspace.reshape(-1, 1))
 
-            reals = cf_values.real
-            imaginaries = cf_values.imag
+            reals = ecf_values.real
+            imaginaries = ecf_values.imag
 
-            group_axis[0].plot(linspace, reals, label=representation, linestyle=linestyles[-j-1])
-            group_axis[1].plot(linspace, imaginaries, label=representation, linestyle=linestyles[-j-1])
+            group_axis[0].plot(linspace, reals, label=ecf_representation, color=colors[-j-1], linestyle="-", linewidth=0.7)
+            group_axis[1].plot(linspace, imaginaries, label=ecf_representation, color=colors[-j-1], linestyle="-", linewidth=0.7)
+
+            torch_stable = TorchStable(alpha, beta, loc, scale)
+            torch_stable.parametrization = parametrization
+            ground_truth_cf_values = torch_stable.characteristic_function(linspace)
+            ground_truth_reals = ground_truth_cf_values.real
+            ground_truth_imaginaries = ground_truth_cf_values.imag
+            group_axis[0].plot(linspace, ground_truth_reals, label=representation, color=colors[-j-1], linestyle=":", linewidth=0.7)
+            group_axis[1].plot(linspace, ground_truth_imaginaries, label=representation, color=colors[-j-1], linestyle=":", linewidth=0.7)
+
+
         
         group_axis[0].legend()
-        group_axis[0].set_ylim((-0.6, 1.1))
-        group_axis[0].set_yticks([-0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0])
+        group_axis[0].set_ylim((-0.3, 1.1))
+        group_axis[0].set_yticks([-0.25, 0.0, 0.25, 0.5, 0.75, 1.0])
         group_axis[1].legend()
         group_axis[1].set_ylim((-0.6, 0.6))
         group_axis[1].set_yticks([-0.5, -0.25, 0.0, 0.25, 0.5])
@@ -122,8 +140,8 @@ def plot_densities(grouped_parameter_set: list[list[dict[str, torch.Tensor]]], p
 def plot_densities_parametrizations(grouped_parameter_set: list[list[dict[str, torch.Tensor]]], filename: str, linspace: torch.Tensor = torch.linspace(-10, 10, 200)) -> None:
     number_of_groups = len(grouped_parameter_set)
     fig, axes = plt.subplots(nrows = number_of_groups, ncols=2)
-    fig.set_size_inches(10, 3 * number_of_groups)
-    fig.set_dpi(2000)
+    fig.set_size_inches(20, 6 * number_of_groups)
+    fig.set_dpi(5000)
 
     for i, group in enumerate(grouped_parameter_set):
         group_axis = axes[i]
@@ -137,11 +155,11 @@ def plot_densities_parametrizations(grouped_parameter_set: list[list[dict[str, t
 
             torch_stable.parametrization = "S0"
             densities_S0 = torch_stable.pdf(linspace)
-            group_axis[0].plot(linspace, densities_S0, label=representation, linestyle=linestyles[-j-1])
+            group_axis[0].plot(linspace, densities_S0, label=representation, color=colors[-j-1], linestyle=linestyles[-j-1], linewidth=0.7)
 
             torch_stable.parametrization = "S1"
             densities_S1 = torch_stable.pdf(linspace)
-            group_axis[1].plot(linspace, densities_S1, label=representation, linestyle=linestyles[-j-1])
+            group_axis[1].plot(linspace, densities_S1, label=representation, color=colors[-j-1], linestyle=linestyles[-j-1], linewidth=0.7)
 
         group_axis[0].legend()
         group_axis[0].set_ylim((-0.1, 0.6))
@@ -158,8 +176,8 @@ def plot_densities_parametrizations(grouped_parameter_set: list[list[dict[str, t
 def plot_distribution_parametrizations(grouped_parameter_set: list[list[dict[str, torch.Tensor]]], filename: str, linspace: torch.Tensor = torch.linspace(-10, 10, 200)) -> None:
     number_of_groups = len(grouped_parameter_set)
     fig, axes = plt.subplots(nrows = number_of_groups, ncols=2)
-    fig.set_size_inches(10, 3 * number_of_groups)
-    fig.set_dpi(2000)
+    fig.set_size_inches(20, 6 * number_of_groups)
+    fig.set_dpi(5000)
 
     for i, group in enumerate(grouped_parameter_set):
         group_axis = axes[i]
@@ -173,11 +191,11 @@ def plot_distribution_parametrizations(grouped_parameter_set: list[list[dict[str
 
             torch_stable.parametrization = "S0"
             densities_S0 = torch_stable.cdf(linspace)
-            group_axis[0].plot(linspace, densities_S0, label=representation, linestyle=linestyles[-j-1])
+            group_axis[0].plot(linspace, densities_S0, label=representation, color=colors[-j-1], linestyle=linestyles[-j-1], linewidth=0.7)
 
             torch_stable.parametrization = "S1"
             densities_S1 = torch_stable.cdf(linspace)
-            group_axis[1].plot(linspace, densities_S1, label=representation, linestyle=linestyles[-j-1])
+            group_axis[1].plot(linspace, densities_S1, label=representation, color=colors[-j-1], linestyle=linestyles[-j-1], linewidth=0.7)
 
         group_axis[0].legend()
         group_axis[0].set_ylim((-0.1, 1.1))
