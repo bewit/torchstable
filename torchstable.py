@@ -618,6 +618,14 @@ class TorchStable(Distribution):
         raise NotImplementedError("Sampling not implemented")
     
 
+    def characteristic_function(self, t: torch.Tensor) -> torch.Tensor:
+        t = (t - self.loc) / self.scale
+        if self._parametrization() == "S0":
+            return _cf_Z0(t, self.alpha, self.beta)
+        elif self._parametrization() == "S1":
+            return _cf_Z1(t, self.alpha, self.beta)
+    
+
     def pdf(self, value: torch.Tensor) -> torch.Tensor:
         if self._parametrization() == "S0":
             return self._pdf(value, self.alpha, self.beta, self.loc, self.scale)
@@ -861,6 +869,13 @@ if __name__ == "__main__":
         {"alpha": 0.5, "beta": -1.0, "loc": 0.0, "scale": 1.0},
     ]
 
+
+    def tail_prob(x, alpha, beta, scale):
+        # in the limit x->inf, this returns the one-sided probability X > x (given 0 parametrization!)
+        c_alpha = torch.sin(M_PI * alpha / 2.) * torch.exp(torch.lgamma(alpha)) / M_PI
+        p = torch.pow(scale, alpha) * c_alpha * (1 + beta) / torch.pow(x, alpha)
+        return p
+
     for params in params_set:
         alpha = params["alpha"]
         beta = params["beta"]
@@ -893,6 +908,9 @@ if __name__ == "__main__":
         scipy_probs = scipy_stable.cdf(data)
         results["s-CDF"] = scipy_probs
         # print(scipy_probs)
+        tail_probs = tail_prob(torch.tensor(x), torch.tensor(alpha), torch.tensor(beta), torch.tensor(scale))
+        results["tail-probs"] = tail_probs
+        # print(tail_probs)
         print(tabulate(results, headers="keys"))
 
 
