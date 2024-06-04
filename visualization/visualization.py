@@ -261,6 +261,8 @@ if __name__ == "__main__":
 
     plot_empirical_characteristic_function(grouped_parameter_set=params_grouped_by_alpha, parametrization="S0", n_samples=100, seed=49, filename="./visualization/ecf100_splitted_S0_grouped_by_alpha.png")
     plot_empirical_characteristic_function(grouped_parameter_set=params_grouped_by_alpha, parametrization="S1", n_samples=100, seed=49, filename="./visualization/ecf100_splitted_S1_grouped_by_alpha.png")
+    plot_empirical_characteristic_function(grouped_parameter_set=params_grouped_by_alpha, parametrization="S0", n_samples=10000, seed=49, filename="./visualization/ecf10000_splitted_S0_grouped_by_alpha.png")
+    plot_empirical_characteristic_function(grouped_parameter_set=params_grouped_by_alpha, parametrization="S1", n_samples=10000, seed=49, filename="./visualization/ecf10000_splitted_S1_grouped_by_alpha.png")
 
     plot_densities_parametrizations(grouped_parameter_set=params_grouped_by_beta, filename="./visualization/densities_parametrizatons_grouped_by_beta.png")
 
