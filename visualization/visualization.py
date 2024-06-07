@@ -25,7 +25,7 @@ def plot_characteristic_function(grouped_parameter_set: list[list[dict[str, torc
             scale = torch.tensor(params["scale"])
             representation = f"S({alpha}, {beta})"
             torch_stable = TorchStable(alpha, beta, loc, scale)
-            torch_stable.parametrization = parametrization
+            torch_stable.parameterization = parametrization
 
             cf_values = torch_stable.characteristic_function(linspace)
 
@@ -86,7 +86,7 @@ def plot_empirical_characteristic_function(grouped_parameter_set: list[list[dict
             group_axis[1].plot(linspace, imaginaries, label=ecf_representation, color=colors[-j-1], linestyle="-", linewidth=0.7)
 
             torch_stable = TorchStable(alpha, beta, loc, scale)
-            torch_stable.parametrization = parametrization
+            torch_stable.parameterization = parametrization
             ground_truth_cf_values = torch_stable.characteristic_function(linspace)
             ground_truth_reals = ground_truth_cf_values.real
             ground_truth_imaginaries = ground_truth_cf_values.imag
@@ -122,7 +122,7 @@ def plot_densities(grouped_parameter_set: list[list[dict[str, torch.Tensor]]], p
             scale = torch.tensor(params["scale"])
             representation = f"S({alpha}, {beta})"
             torch_stable = TorchStable(alpha, beta, loc, scale)
-            torch_stable.parametrization = parametrization
+            torch_stable.parameterization = parametrization
 
             densities = torch_stable.pdf(linspace)
 
@@ -153,11 +153,11 @@ def plot_densities_parametrizations(grouped_parameter_set: list[list[dict[str, t
             representation = f"S({alpha}, {beta})"
             torch_stable = TorchStable(alpha, beta, loc, scale)
 
-            torch_stable.parametrization = "S0"
+            torch_stable.parameterization = "S0"
             densities_S0 = torch_stable.pdf(linspace)
             group_axis[0].plot(linspace, densities_S0, label=representation, color=colors[-j-1], linestyle=linestyles[-j-1], linewidth=0.7)
 
-            torch_stable.parametrization = "S1"
+            torch_stable.parameterization = "S1"
             densities_S1 = torch_stable.pdf(linspace)
             group_axis[1].plot(linspace, densities_S1, label=representation, color=colors[-j-1], linestyle=linestyles[-j-1], linewidth=0.7)
 
@@ -189,11 +189,11 @@ def plot_distribution_parametrizations(grouped_parameter_set: list[list[dict[str
             representation = f"S({alpha}, {beta})"
             torch_stable = TorchStable(alpha, beta, loc, scale)
 
-            torch_stable.parametrization = "S0"
+            torch_stable.parameterization = "S0"
             densities_S0 = torch_stable.cdf(linspace)
             group_axis[0].plot(linspace, densities_S0, label=representation, color=colors[-j-1], linestyle=linestyles[-j-1], linewidth=0.7)
 
-            torch_stable.parametrization = "S1"
+            torch_stable.parameterization = "S1"
             densities_S1 = torch_stable.cdf(linspace)
             group_axis[1].plot(linspace, densities_S1, label=representation, color=colors[-j-1], linestyle=linestyles[-j-1], linewidth=0.7)
 
