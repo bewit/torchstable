@@ -633,7 +633,7 @@ class TorchStable(Distribution):
         if self._parameterization() == "S0":
             return _cf_Z0(t, self.alpha, self.beta)
         elif self._parameterization() == "S1":
-            if alpha == 1.0:
+            if self.alpha == 1.0:
                 loc_corrected = self.loc + 2*self.beta*self.scale * torch.log(self.scale) / M_PI
                 t = (((self.scale * t) + self.loc) - loc_corrected) / self.scale
             return _cf_Z1(t, self.alpha, self.beta)
@@ -644,7 +644,7 @@ class TorchStable(Distribution):
         if self._parameterization() == "S0":
             return _logcf_Z0(t, self.alpha, self.beta)
         elif self._parameterization() == "S1":
-            if alpha == 1.0:
+            if self.alpha == 1.0:
                 loc_corrected = self.loc + 2*self.beta*self.scale * torch.log(self.scale) / M_PI
                 t = (((self.scale * t) + self.loc) - loc_corrected) / self.scale
             return _logcf_Z1(t, self.alpha, self.beta)
