@@ -11,6 +11,7 @@
 import math
 from numbers import Number
 from functools import partial
+from typing import Literal
 
 import torch
 from torch import distributions as dist
@@ -564,7 +565,17 @@ def _fitstart_mcculloch_S1(data, epsilon):
     delta = zeta-beta*c*np.tan(np.pi*alpha/2.) if alpha != 1. else zeta
 
     return (torch.tensor(alpha), torch.tensor(beta), torch.tensor(delta), torch.tensor(c))
-    
+
+
+def fit(data: torch.Tensor, epsilon: float, parameterization: str, method: Literal["quantile"] = "quantile") -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    # TODO: implement MLE on top of quantile parameters
+    if method == "quantile":
+        if parameterization == "S0":
+            return _fitstart_mcculloch_S0(data, epsilon)
+        elif parameterization == "S1":
+            return _fitstart_mcculloch_S1(data, epsilon)
+    else:
+        raise ValueError("Only supporting McCulloch's quantile estimation by now")
 
 
 class TorchStable(Distribution):
@@ -813,7 +824,7 @@ class TorchStable(Distribution):
         elif self._parameterization() == "S1":
             _fitstart = _fitstart_mcculloch_S1
         return _fitstart(data, epsilon=epsilon)
-
+    
 
     def icdf(self, value: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
@@ -821,6 +832,8 @@ class TorchStable(Distribution):
 
     def entropy(self):
         raise NotImplementedError
+
+
     
 
 
