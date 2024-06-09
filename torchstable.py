@@ -123,11 +123,14 @@ def _transform_half_real_line_to_unit_interval(fct, t):
 
 
 def _Phi_Z0(alpha, t):
-    return (
+    mask = t==0.0
+    ret =  (
         -torch.tan(M_PI * alpha / 2) * (torch.pow(torch.abs(t), (1 - alpha)) - 1)
         if alpha != 1
         else -2.0 * torch.log(torch.abs(t)) / M_PI
     )
+    ret[mask] = torch.tensor(0.0)
+    return ret
 
 
 def _Phi_Z1(alpha, t):
@@ -138,21 +141,21 @@ def _Phi_Z1(alpha, t):
     )
 
 
-def _cf(Phi, t, alpha, beta):
+def _characteristic_function(Phi, t, alpha, beta):
     return torch.exp(
         -(torch.pow(torch.abs(t), alpha) * (1 - 1j * beta * torch.sign(t) * Phi(alpha, t)))
     )
 
 
-_cf_Z0 = partial(_cf, _Phi_Z0)
-_cf_Z1 = partial(_cf, _Phi_Z1)
+_cf_Z0 = partial(_characteristic_function, _Phi_Z0)
+_cf_Z1 = partial(_characteristic_function, _Phi_Z1)
 
 
-def _logcf(Phi, t, alpha, beta):
+def _log_characteristic_function(Phi, t, alpha, beta):
     return -(torch.pow(torch.abs(t), alpha) * (1 - 1j * beta * torch.sign(t) * Phi(alpha, t)))
 
-_logcf_Z0 = partial(_logcf, _Phi_Z0)
-_logcf_Z1 = partial(_logcf, _Phi_Z1)
+_logcf_Z0 = partial(_log_characteristic_function, _Phi_Z0)
+_logcf_Z1 = partial(_log_characteristic_function, _Phi_Z1)
 
 
 def _pdf_single_value_cf_integrate(Phi, x, alpha, beta, **kwds):
@@ -628,26 +631,150 @@ class TorchStable(Distribution):
         raise NotImplementedError("Sampling not implemented")
     
 
-    def characteristic_function(self, t: torch.Tensor) -> torch.Tensor:
-        t = (t - self.loc) / self.scale
+    def characteristic_function(self, value: torch.Tensor) -> torch.Tensor:   
         if self._parameterization() == "S0":
-            return _cf_Z0(t, self.alpha, self.beta)
+            return self._characteristic_function(value, self.alpha, self.beta, self.loc, self.scale)
         elif self._parameterization() == "S1":
-            if self.alpha == 1.0:
-                loc_corrected = self.loc + 2*self.beta*self.scale * torch.log(self.scale) / M_PI
-                t = (((self.scale * t) + self.loc) - loc_corrected) / self.scale
-            return _cf_Z1(t, self.alpha, self.beta)
+            alpha = self.alpha
+            beta = self.beta
+            loc = self.loc
+            scale = self.scale
+            if torch.all(torch.reshape(self.alpha, (1, -1))[0, :] != 1.):
+                return self._characteristic_function(value, alpha, beta, loc, scale)
+            else:
+                value_shape = value.shape
+                uniq_param_pairs = torch.cat((alpha.reshape(-1, 1), beta.reshape(-1, 1)), dim=-1)
+
+                value, alpha, beta = broadcast_all(value, alpha, beta)
+                value = torch.reshape(value, (1, -1))[0, :]
+                alpha = torch.reshape(alpha, (1, -1))[0, :]
+                beta = torch.reshape(beta, (1, -1))[0, :]
+                data_in = torch.dstack((value, alpha, beta))[0]
+                data_out = torch.empty(size=(len(data_in), 1), dtype=torch.cdouble)
+
+                for pair in uniq_param_pairs:
+                    _alpha, _beta = pair
+                    if _alpha == 1.0:
+                        _delta = loc + 2*_beta*scale * torch.log(scale) / M_PI
+                    else:
+                        _delta = loc
+                    data_mask = torch.all(data_in[:, 1:] == pair, dim=-1)
+                    _x = data_in[data_mask, 0]
+                    data_out[data_mask] = self._characteristic_function(_x, _alpha, _beta, loc=_delta, scale=scale).reshape(len(_x), 1)
+
+                data_out = torch.reshape(data_out, value_shape) 
+
+                return data_out  
         
 
-    def log_characteristic_function(self, t: torch.Tensor) -> torch.Tensor:
-        t = (t - self.loc) / self.scale
+    def _characteristic_function(self, value, alpha, beta, loc, scale) -> torch.Tensor:
         if self._parameterization() == "S0":
-            return _logcf_Z0(t, self.alpha, self.beta)
+            _cf = _cf_Z0
         elif self._parameterization() == "S1":
-            if self.alpha == 1.0:
-                loc_corrected = self.loc + 2*self.beta*self.scale * torch.log(self.scale) / M_PI
-                t = (((self.scale * t) + self.loc) - loc_corrected) / self.scale
-            return _logcf_Z1(t, self.alpha, self.beta)
+            _cf = _cf_Z1
+
+        loc, scale, value = broadcast_all(loc, scale, value)
+        value_shape = value.shape
+        value = (value - loc) / scale
+         
+        uniq_param_pairs = torch.cat((alpha.reshape(-1, 1), beta.reshape(-1, 1)), dim=-1)
+
+        value, alpha, beta = broadcast_all(value, alpha, beta)
+        value = torch.reshape(value, (1, -1))[0, :]
+        alpha = torch.reshape(alpha, (1, -1))[0, :]
+        beta = torch.reshape(beta, (1, -1))[0, :]
+
+        data_in = torch.dstack((value, alpha, beta))[0]
+        data_out = torch.empty(size=(len(data_in), 1), dtype=torch.cdouble)
+
+        for pair in uniq_param_pairs:
+            data_mask = torch.all(data_in[:, 1:] == pair, dim=-1)
+            data_subset = data_in[data_mask]
+            (_alpha, _beta) = pair
+            data_out[data_mask] = _cf(data_subset[:, 0], _alpha, _beta).reshape(len(data_subset), 1)
+            # data_out[data_mask] = torch.tensor(
+            #     [
+            #         _cf(_value, _alpha, _beta)
+            #         for _value, _alpha, _beta in data_subset
+            #     ]
+            # ).reshape(len(data_subset), 1)
+
+        data_out = torch.reshape(data_out, value_shape)        
+
+        return data_out
+
+
+    def log_characteristic_function(self, value: torch.Tensor) -> torch.Tensor: 
+        if self._parameterization() == "S0":
+            return self._log_characteristic_function(value, self.alpha, self.beta, self.loc, self.scale)
+        elif self._parameterization() == "S1":
+            alpha = self.alpha
+            beta = self.beta
+            loc = self.loc
+            scale = self.scale
+            if torch.all(torch.reshape(self.alpha, (1, -1))[0, :] != 1.):
+                return self._log_characteristic_function(value, alpha, beta, loc, scale)
+            else:
+                value_shape = value.shape
+                uniq_param_pairs = torch.cat((alpha.reshape(-1, 1), beta.reshape(-1, 1)), dim=-1)
+
+                value, alpha, beta = broadcast_all(value, alpha, beta)
+                value = torch.reshape(value, (1, -1))[0, :]
+                alpha = torch.reshape(alpha, (1, -1))[0, :]
+                beta = torch.reshape(beta, (1, -1))[0, :]
+                data_in = torch.dstack((value, alpha, beta))[0]
+                data_out = torch.empty(size=(len(data_in), 1), dtype=torch.cdouble)
+
+                for pair in uniq_param_pairs:
+                    _alpha, _beta = pair
+                    if _alpha == 1.0:
+                        _delta = loc + 2*_beta*scale * torch.log(scale) / M_PI
+                    else:
+                        _delta = loc
+                    data_mask = torch.all(data_in[:, 1:] == pair, dim=-1)
+                    _x = data_in[data_mask, 0]
+                    data_out[data_mask] = self._log_characteristic_function(_x, _alpha, _beta, loc=_delta, scale=scale).reshape(len(_x), 1)
+
+                data_out = torch.reshape(data_out, value_shape) 
+
+                return data_out  
+        
+
+    def _log_characteristic_function(self, value, alpha, beta, loc, scale) -> torch.Tensor:
+        if self._parameterization() == "S0":
+            _log_cf = _logcf_Z0
+        elif self._parameterization() == "S1":
+            _log_cf = _logcf_Z1
+
+        loc, scale, value = broadcast_all(loc, scale, value)
+        value_shape = value.shape
+        value = (value - loc) / scale
+         
+        uniq_param_pairs = torch.cat((alpha.reshape(-1, 1), beta.reshape(-1, 1)), dim=-1)
+
+        value, alpha, beta = broadcast_all(value, alpha, beta)
+        value = torch.reshape(value, (1, -1))[0, :]
+        alpha = torch.reshape(alpha, (1, -1))[0, :]
+        beta = torch.reshape(beta, (1, -1))[0, :]
+
+        data_in = torch.dstack((value, alpha, beta))[0]
+        data_out = torch.empty(size=(len(data_in), 1), dtype=torch.cdouble)
+
+        for pair in uniq_param_pairs:
+            data_mask = torch.all(data_in[:, 1:] == pair, dim=-1)
+            data_subset = data_in[data_mask]
+            (_alpha, _beta) = pair
+            data_out[data_mask] = _log_cf(data_subset[:, 0], _alpha, _beta).reshape(len(data_subset), 1)
+            # data_out[data_mask] = torch.tensor(
+            #     [
+            #         _log_cf(_value, _alpha, _beta)
+            #         for _value, _alpha, _beta in data_subset
+            #     ]
+            # ).reshape(len(data_subset), 1)
+
+        data_out = torch.reshape(data_out, value_shape)        
+
+        return data_out
     
 
     def pdf(self, value: torch.Tensor) -> torch.Tensor:
@@ -677,7 +804,6 @@ class TorchStable(Distribution):
                         _delta = loc + 2*_beta*scale * torch.log(scale) / M_PI
                     else:
                         _delta = loc
-                    # _delta = (loc + 2*_beta*scale * torch.log(scale) / M_PI if _alpha==1.0 else loc)
                     data_mask = torch.all(data_in[:, 1:] == pair, dim=-1)
                     _x = data_in[data_mask, 0]
                     data_out[data_mask] = self._pdf(_x, _alpha, _beta, loc=_delta, scale=scale).reshape(len(_x), 1)
@@ -686,8 +812,6 @@ class TorchStable(Distribution):
 
                 return data_out       
 
-
-    
 
     def _pdf(self, value, alpha, beta, loc, scale) -> torch.Tensor:
         if self._parameterization() == "S0":
@@ -712,10 +836,8 @@ class TorchStable(Distribution):
             "piecewise_alpha_tol_near_one": self.piecewise_alpha_tol_near_one,
         }
 
-        # retrieve original shape for reshaping lateron
         loc, scale, value = broadcast_all(loc, scale, value)
         value_shape = value.shape
-        # standardize
         value = (value - loc) / scale
          
         uniq_param_pairs = torch.cat((alpha.reshape(-1, 1), beta.reshape(-1, 1)), dim=-1)
@@ -728,7 +850,6 @@ class TorchStable(Distribution):
         data_in = torch.dstack((value, alpha, beta))[0]
         data_out = torch.empty(size=(len(data_in), 1))
 
-        # uniq_param_pairs = torch.unique(data_in[:, 1:], dim=0)
         for pair in uniq_param_pairs:
             data_mask = torch.all(data_in[:, 1:] == pair, dim=-1)
             data_subset = data_in[data_mask]
@@ -739,9 +860,7 @@ class TorchStable(Distribution):
                 ]
             ).reshape(len(data_subset), 1)
 
-        # reshape to original tensor
         data_out = torch.reshape(data_out, value_shape)        
-        # account for standardization
         data_out = data_out / scale
 
         return data_out
@@ -778,7 +897,6 @@ class TorchStable(Distribution):
                         _delta = loc + 2*_beta*scale * torch.log(scale) / M_PI
                     else:
                         _delta = loc
-                    # _delta = (loc + 2*_beta*scale * torch.log(scale) / M_PI if _alpha==1.0 else loc)
                     data_mask = torch.all(data_in[:, 1:] == pair, dim=-1)
                     _x = data_in[data_mask, 0]
                     data_out[data_mask] = self._cdf(_x, _alpha, _beta, loc=_delta, scale=scale).reshape(len(_x), 1)
@@ -807,10 +925,8 @@ class TorchStable(Distribution):
             "piecewise_alpha_tol_near_one": self.piecewise_alpha_tol_near_one,
         }
 
-        # retrieve original shape for reshaping lateron
         loc, scale, value = broadcast_all(loc, scale, value)
         value_shape = value.shape
-        # standardize
         value = (value - loc) / scale
          
         uniq_param_pairs = torch.cat((alpha.reshape(-1, 1), beta.reshape(-1, 1)), dim=-1)
@@ -832,7 +948,6 @@ class TorchStable(Distribution):
                 ]
             ).reshape(len(data_subset), 1)
 
-        # reshape to original tensor
         data_out = torch.reshape(data_out, value_shape)        
 
         return data_out
