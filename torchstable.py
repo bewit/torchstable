@@ -63,7 +63,7 @@ class Nolan:
             self.c2 = alpha * M_1_PI / torch.abs(alpha - 1.) / (x0 - self.zeta)
             self.g = self.g_alpha_ne_one
 
-        else: # alpha == 1.
+        else: # alpha == 1.0
             self.xi = M_PI_2
             self.two_beta_div_pi = beta * M_2_PI
             self.pi_div_two_beta = M_PI_2 / beta
@@ -146,6 +146,13 @@ def _cf(Phi, t, alpha, beta):
 
 _cf_Z0 = partial(_cf, _Phi_Z0)
 _cf_Z1 = partial(_cf, _Phi_Z1)
+
+
+def _logcf(Phi, t, alpha, beta):
+    return -(torch.pow(torch.abs(t), alpha) * (1 - 1j * beta * torch.sign(t) * Phi(alpha, t)))
+
+_logcf_Z0 = partial(_logcf, _Phi_Z0)
+_logcf_Z1 = partial(_logcf, _Phi_Z1)
 
 
 def _pdf_single_value_cf_integrate(Phi, x, alpha, beta, **kwds):
@@ -345,7 +352,7 @@ def _cdf_single_value_piecewise_post_rounding_Z0(x0, alpha, beta, x_tol_near_zet
 
     x0 = _nolan_round_x_near_zeta(x0, alpha, zeta, x_tol_near_zeta)
 
-    if (alpha == 1. and beta < 0.) or x0 < zeta:
+    if (alpha == 1.0 and beta < 0.0) or x0 < zeta:
         return 1 - _cdf_single_value_piecewise_post_rounding_Z0(-x0, alpha, -beta, x_tol_near_zeta)
     elif torch.isclose(x0, zeta):
         return 0.5 - xi / M_PI
@@ -626,7 +633,21 @@ class TorchStable(Distribution):
         if self._parameterization() == "S0":
             return _cf_Z0(t, self.alpha, self.beta)
         elif self._parameterization() == "S1":
+            if alpha == 1.0:
+                loc_corrected = self.loc + 2*self.beta*self.scale * torch.log(self.scale) / M_PI
+                t = (((self.scale * t) + self.loc) - loc_corrected) / self.scale
             return _cf_Z1(t, self.alpha, self.beta)
+        
+
+    def log_characteristic_function(self, t: torch.Tensor) -> torch.Tensor:
+        t = (t - self.loc) / self.scale
+        if self._parameterization() == "S0":
+            return _logcf_Z0(t, self.alpha, self.beta)
+        elif self._parameterization() == "S1":
+            if alpha == 1.0:
+                loc_corrected = self.loc + 2*self.beta*self.scale * torch.log(self.scale) / M_PI
+                t = (((self.scale * t) + self.loc) - loc_corrected) / self.scale
+            return _logcf_Z1(t, self.alpha, self.beta)
     
 
     def pdf(self, value: torch.Tensor) -> torch.Tensor:
@@ -652,7 +673,7 @@ class TorchStable(Distribution):
 
                 for pair in uniq_param_pairs:
                     _alpha, _beta = pair
-                    if _alpha == 1.:
+                    if _alpha == 1.0:
                         _delta = loc + 2*_beta*scale * torch.log(scale) / M_PI
                     else:
                         _delta = loc
@@ -753,7 +774,7 @@ class TorchStable(Distribution):
 
                 for pair in uniq_param_pairs:
                     _alpha, _beta = pair
-                    if _alpha == 1.:
+                    if _alpha == 1.0:
                         _delta = loc + 2*_beta*scale * torch.log(scale) / M_PI
                     else:
                         _delta = loc
